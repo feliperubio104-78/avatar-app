@@ -6,23 +6,39 @@ import { createServerSupabase } from "@/lib/supabase/server";
 export default async function PremiumPage() {
   const supabase = await createServerSupabase();
 
+  // Obtener usuario autenticado
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (userError || !user) {
     redirect("/login");
   }
 
-  const { data: premiumRow } = await supabase
+  // Buscar estado premium
+  const { data: premiumRow, error: premiumError } = await supabase
     .from("premium")
     .select("is_premium, stripe_price_id, current_period_end")
     .eq("user_id", user.id)
     .maybeSingle();
 
+  if (premiumError) {
+    console.error("Error fetching premium data:", premiumError);
+    redirect("/dashboard?upgrade=1");
+  }
+
   if (!premiumRow || !premiumRow.is_premium) {
     redirect("/dashboard?upgrade=1");
   }
+
+  // Convertir fecha correctamente (Stripe suele guardar en segundos)
+  const renewalDate =
+    premiumRow.current_period_end
+      ? new Date(
+          Number(premiumRow.current_period_end) * 1000
+        ).toLocaleString()
+      : "N/A";
 
   return (
     <main style={{ padding: 40 }}>
@@ -37,11 +53,7 @@ export default async function PremiumPage() {
 
         <div>
           <strong>Renueva el:</strong>{" "}
-          {premiumRow.current_period_end
-            ? new Date(
-                premiumRow.current_period_end
-              ).toLocaleString()
-            : "N/A"}
+          {renewalDate}
         </div>
       </div>
     </main>
