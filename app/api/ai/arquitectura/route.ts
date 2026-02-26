@@ -6,7 +6,7 @@ import { createAuthClient } from "@/lib/supabase/auth-server";
 import { getPremiumStatus } from "@/lib/premium";
 
 export const runtime = "nodejs";
-
+export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const openai = new OpenAI({
