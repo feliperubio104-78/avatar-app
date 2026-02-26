@@ -1,30 +1,20 @@
 // lib/supabase/server.ts
+
 import "server-only";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 /**
- * Server Components: SOLO LECTURA.
- * No podemos modificar cookies aquí (Next 16 lo prohíbe),
- * así que set/remove son NO-OP.
+ * Cliente exclusivo para backend (API routes)
+ * Usa SERVICE ROLE para poder hacer inserts sin RLS.
  */
-export async function createServerSupabase() {
-  const cookieStore = await cookies();
-
-  return createServerClient(
+export function createServiceClient() {
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {
-          // NO-OP (Server Components no permiten set cookies)
-        },
-        remove() {
-          // NO-OP
-        },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
       },
     }
   );

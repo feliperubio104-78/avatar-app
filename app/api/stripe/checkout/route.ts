@@ -1,32 +1,38 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { createClient as createAdmin } from "@supabase/supabase-js";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+import { createAuthClient } from "@/lib/supabase/auth-server";
 
 // 🔐 Cliente ADMIN (ignora RLS)
-const admin = createAdmin(
+const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
 );
 
 export async function POST() {
   try {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-    const priceId = process.env.STRIPE_PRICE_ID;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL!;
+    const priceId = process.env.STRIPE_PRICE_ID!;
 
     if (!siteUrl) {
-      throw new Error("Missing NEXT_PUBLIC_SITE_URL in env");
+      throw new Error("Missing NEXT_PUBLIC_SITE_URL");
     }
 
     if (!priceId) {
-      throw new Error("Missing STRIPE_PRICE_ID in env");
+      throw new Error("Missing STRIPE_PRICE_ID");
     }
 
-    // 1️⃣ Obtener usuario autenticado
-    const supabase = await createServerSupabase();
+    // 🔐 1. Obtener usuario autenticado
+    const authClient = await createAuthClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await authClient.auth.getUser();
 
     if (!user) {
       return NextResponse.redirect(`${siteUrl}/login`, 303);
@@ -35,16 +41,16 @@ export async function POST() {
     const userId = user.id;
     const email = user.email ?? "";
 
-    // 2️⃣ Leer fila premium
+    // 🔎 2. Buscar fila premium existente
     const { data: premiumRow } = await admin
       .from("premium")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
 
-    // 3️⃣ Crear Stripe customer si no existe
-    let customerId = premiumRow?.stripe_customer_id as string | null;
+    let customerId = premiumRow?.stripe_customer_id ?? null;
 
+    // 👤 3. Crear customer si no existe
     if (!customerId) {
       const customer = await stripe.customers.create({
         email,
@@ -55,18 +61,17 @@ export async function POST() {
 
       customerId = customer.id;
 
-      await admin
-        .from("premium")
-        .upsert(
-          {
-            user_id: userId,
-            stripe_customer_id: customerId,
-          },
-          { onConflict: "user_id" }
-        );
+      await admin.from("premium").upsert(
+        {
+          user_id: userId,
+          stripe_customer_id: customerId,
+          is_premium: false,
+        },
+        { onConflict: "user_id" }
+      );
     }
 
-    // 4️⃣ Crear sesión Checkout
+    // 💳 4. Crear sesión Checkout
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -77,7 +82,7 @@ export async function POST() {
         },
       ],
       success_url: `${siteUrl}/dashboard?success=1`,
-      cancel_url: `${siteUrl}/dashboard?canceled=1`,
+      cancel_url: `${siteUrl}/premium?canceled=1`,
       subscription_data: {
         metadata: {
           user_id: userId,
@@ -88,20 +93,27 @@ export async function POST() {
       },
     });
 
-    // 5️⃣ Guardar session ID
-    await admin
-      .from("premium")
-      .update({ stripe_session_id: session.id })
-      .eq("user_id", userId);
+    if (!session.url) {
+      throw new Error("Stripe session has no URL");
+    }
 
-    // 🔥 Redirigir correctamente a Stripe
-    return NextResponse.redirect(session.url!, 303);
+    // 📝 5. Guardar session ID
+    await admin.from("premium").upsert(
+      {
+        user_id: userId,
+        stripe_session_id: session.id,
+      },
+      { onConflict: "user_id" }
+    );
+
+    // 🔁 6. Redirigir a Stripe
+    return NextResponse.redirect(session.url, 303);
 
   } catch (error: any) {
     console.error("CHECKOUT ERROR:", error?.message || error);
 
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?error=1`,
+      `${process.env.NEXT_PUBLIC_SITE_URL}/premium?error=1`,
       303
     );
   }
