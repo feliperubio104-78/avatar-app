@@ -4,6 +4,8 @@ import { createAuthClient } from "@/lib/supabase/auth-server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getPremiumStatus } from "@/lib/premium";
 
+export const dynamic = "force-dynamic";
+
 export default async function ArquitecturaPage() {
   const authClient = await createAuthClient();
   const {
@@ -12,8 +14,9 @@ export default async function ArquitecturaPage() {
 
   if (!user) redirect("/login");
 
-  const service = createServiceClient();
   const premium = await getPremiumStatus(user.id);
+
+  const service = createServiceClient();
 
   const { data, error, count } = await service
     .from("architectures")
@@ -38,7 +41,6 @@ export default async function ArquitecturaPage() {
     <main style={{ padding: 40 }}>
       <h1>Mis Arquitecturas</h1>
 
-      {/* ===== PLAN STATUS ===== */}
       <div
         style={{
           marginTop: 16,
@@ -69,7 +71,6 @@ export default async function ArquitecturaPage() {
         )}
       </div>
 
-      {/* ===== BOTÓN CREAR ===== */}
       {canCreate ? (
         <div style={{ marginBottom: 20 }}>
           <Link href="/arquitectura/nueva">

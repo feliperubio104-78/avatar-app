@@ -4,6 +4,8 @@ import { createAuthClient } from "@/lib/supabase/auth-server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getPremiumStatus } from "@/lib/premium";
 
+export const dynamic = "force-dynamic";
+
 function Card({
   title,
   children,
@@ -38,7 +40,6 @@ export default async function ArquitecturaDetallePage({
 }) {
   const { id } = params;
 
-  // 🔐 1. Verificar login
   const authClient = await createAuthClient();
   const {
     data: { user },
@@ -48,14 +49,12 @@ export default async function ArquitecturaDetallePage({
     redirect("/login");
   }
 
-  // 🔐 2. Verificar premium
   const premium = await getPremiumStatus(user.id);
 
   if (!premium.isPremium) {
     redirect("/premium");
   }
 
-  // 🔐 3. Obtener registro
   const service = createServiceClient();
 
   const { data, error } = await service
@@ -73,7 +72,6 @@ export default async function ArquitecturaDetallePage({
     );
   }
 
-  // 🔐 4. Seguridad extra: que solo vea su propio registro
   if (data.user_id !== user.id) {
     return (
       <main style={{ padding: 40 }}>
