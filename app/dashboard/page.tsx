@@ -1,7 +1,9 @@
 // app/dashboard/page.tsx
+
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createAuthClient } from "@/lib/supabase/auth-server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { getPremiumStatus } from "@/lib/premium";
 
 export default async function DashboardPage({
@@ -14,10 +16,23 @@ export default async function DashboardPage({
     error?: string;
   };
 }) {
-  const authClient = await createAuthClient();
+  const cookieStore = await cookies();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
+
   const {
     data: { user },
-  } = await authClient.auth.getUser();
+  } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
 
@@ -48,8 +63,6 @@ export default async function DashboardPage({
         Hola {user.email}
       </p>
 
-      {/* ===== PLAN STATUS ===== */}
-
       <div
         style={{
           marginTop: 20,
@@ -76,7 +89,6 @@ export default async function DashboardPage({
                 {premium.architecturesLimit}
               </div>
 
-              {/* Barra progreso segura */}
               <div
                 style={{
                   marginTop: 8,
@@ -99,7 +111,6 @@ export default async function DashboardPage({
                 />
               </div>
 
-              {/* Mensaje elegante */}
               {!freeLimitReached && remaining === 1 && (
                 <div
                   style={{
@@ -139,34 +150,6 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* ===== MENSAJES SISTEMA ===== */}
-
-      {searchParams?.upgrade && !premium.isPremium && (
-        <p style={{ color: "crimson", marginTop: 16 }}>
-          Necesitas activar Arquitectura Profesional para continuar.
-        </p>
-      )}
-
-      {searchParams?.success && (
-        <p style={{ color: "green", marginTop: 16 }}>
-          🎉 Arquitectura Profesional activada correctamente.
-        </p>
-      )}
-
-      {searchParams?.canceled && (
-        <p style={{ color: "orange", marginTop: 16 }}>
-          El proceso de activación fue cancelado.
-        </p>
-      )}
-
-      {searchParams?.error && (
-        <p style={{ color: "crimson", marginTop: 16 }}>
-          Ocurrió un error procesando la activación.
-        </p>
-      )}
-
-      {/* ===== ACCIONES PRINCIPALES ===== */}
-
       <div
         style={{
           display: "flex",
@@ -193,57 +176,7 @@ export default async function DashboardPage({
               : "Construir mi Arquitectura"}
           </button>
         </Link>
-
-        {!premium.isPremium ? (
-          <Link href="/premium">
-            <button
-              style={{
-                padding: "10px 16px",
-                borderRadius: 8,
-                border: "1px solid #000",
-                background: "white",
-                fontWeight: 600,
-              }}
-            >
-              Ver planes
-            </button>
-          </Link>
-        ) : (
-          <span
-            style={{
-              background: "#16a34a",
-              color: "white",
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontWeight: 600,
-            }}
-          >
-            ✔️ Premium activo
-          </span>
-        )}
       </div>
-
-      {/* ===== PREMIUM PANEL ===== */}
-
-      {premium.isPremium && (
-        <div style={{ marginTop: 40 }}>
-          <form action="/api/stripe/portal" method="POST">
-            <button
-              type="submit"
-              style={{
-                padding: "10px 16px",
-                borderRadius: 8,
-                border: "1px solid #16a34a",
-                background: "white",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Gestionar suscripción
-            </button>
-          </form>
-        </div>
-      )}
     </main>
   );
 }
