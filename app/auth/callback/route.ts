@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${requestUrl.origin}/login`);
   }
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies(); // 👈 IMPORTANTE: await
 
   const response = NextResponse.redirect(
     `${requestUrl.origin}/dashboard`
