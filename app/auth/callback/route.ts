@@ -37,8 +37,8 @@ export async function GET(request: Request) {
     }
   );
 
-  // 🔥 ESTA ES LA LÍNEA CLAVE
-  await supabase.auth.exchangeCodeForSession(requestUrl);
+  // 🔥 ESTA ES LA LÍNEA CORRECTA PARA TU VERSIÓN
+  await supabase.auth.exchangeCodeForSession(request.url);
 
   return response;
 }
