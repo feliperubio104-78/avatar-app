@@ -4,6 +4,13 @@ import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+
+  if (!code) {
+    return NextResponse.redirect(
+      new URL("/login", requestUrl.origin)
+    );
+  }
 
   const cookieStore = await cookies();
 
@@ -37,8 +44,7 @@ export async function GET(request: Request) {
     }
   );
 
-  // 🔥 ESTA ES LA LÍNEA CORRECTA PARA TU VERSIÓN
-  await supabase.auth.exchangeCodeForSession(request.url);
+  await supabase.auth.exchangeCodeForSession(code);
 
   return response;
 }
