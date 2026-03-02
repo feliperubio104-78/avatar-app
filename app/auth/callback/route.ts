@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
 
   if (!code) {
-    return NextResponse.redirect(`${requestUrl.origin}/login`);
+    return NextResponse.redirect(
+      new URL("/login", requestUrl.origin)
+    );
   }
 
-  const cookieStore = await cookies(); // 👈 IMPORTANTE: await
-
   const response = NextResponse.redirect(
-    `${requestUrl.origin}/dashboard`
+    new URL("/dashboard", requestUrl.origin)
   );
 
   const supabase = createServerClient(
@@ -22,7 +21,11 @@ export async function GET(request: Request) {
     {
       cookies: {
         get(name: string) {
-          return cookieStore.get(name)?.value;
+          return request.headers
+            .get("cookie")
+            ?.split("; ")
+            .find((c) => c.startsWith(name + "="))
+            ?.split("=")[1];
         },
         set(name: string, value: string, options: any) {
           response.cookies.set({

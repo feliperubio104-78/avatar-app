@@ -16,6 +16,7 @@ export default async function DashboardPage({
     error?: string;
   };
 }) {
+  // ✅ En tu versión de Next esto es ASYNC
   const cookieStore = await cookies();
 
   const supabase = createServerClient(
@@ -26,16 +27,19 @@ export default async function DashboardPage({
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
+        set() {},
+        remove() {},
       },
     }
   );
 
-  // 🔥 CAMBIO CLAVE: usar getSession() en vez de getUser()
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  if (!session) redirect("/login");
+  if (!session) {
+    redirect("/login");
+  }
 
   const user = session.user;
 
