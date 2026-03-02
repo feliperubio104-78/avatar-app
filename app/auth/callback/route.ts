@@ -7,15 +7,13 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get("code");
 
   if (!code) {
-    return NextResponse.redirect(
-      new URL("/login", requestUrl.origin)
-    );
+    return NextResponse.redirect(`${requestUrl.origin}/login`);
   }
 
   const cookieStore = await cookies();
 
   const response = NextResponse.redirect(
-    new URL("/dashboard", requestUrl.origin)
+    `${requestUrl.origin}/dashboard`
   );
 
   const supabase = createServerClient(
@@ -44,6 +42,7 @@ export async function GET(request: Request) {
     }
   );
 
+  // 🔥 ESTA ES LA LÍNEA CLAVE
   await supabase.auth.exchangeCodeForSession(code);
 
   return response;
