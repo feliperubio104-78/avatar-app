@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
 
-  if (!code) {
-    return NextResponse.redirect(
-      new URL("/login", requestUrl.origin)
-    );
-  }
+  const cookieStore = await cookies();
 
   const response = NextResponse.redirect(
     new URL("/dashboard", requestUrl.origin)
@@ -21,11 +17,7 @@ export async function GET(request: Request) {
     {
       cookies: {
         get(name: string) {
-          return request.headers
-            .get("cookie")
-            ?.split("; ")
-            .find((c) => c.startsWith(name + "="))
-            ?.split("=")[1];
+          return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: any) {
           response.cookies.set({
@@ -45,7 +37,8 @@ export async function GET(request: Request) {
     }
   );
 
-  await supabase.auth.exchangeCodeForSession(code);
+  // 🔥 ESTA ES LA LÍNEA CLAVE
+  await supabase.auth.exchangeCodeForSession(requestUrl);
 
   return response;
 }
