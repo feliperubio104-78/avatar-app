@@ -3,7 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
 import { createAuthClient } from "@/lib/supabase/auth-server";
 
-// 🔐 Cliente ADMIN (ignora RLS)
+// 🔐 Supabase ADMIN client (ignora RLS)
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -17,8 +17,8 @@ const admin = createClient(
 
 export async function POST() {
   try {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL!;
-    const priceId = process.env.STRIPE_PRICE_ID!;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    const priceId = process.env.STRIPE_PRICE_ID;
 
     if (!siteUrl) {
       throw new Error("Missing NEXT_PUBLIC_SITE_URL");
@@ -28,29 +28,42 @@ export async function POST() {
       throw new Error("Missing STRIPE_PRICE_ID");
     }
 
-    // 🔐 1. Obtener usuario autenticado
+    /**
+     * 🔐 1. Obtener usuario autenticado (SSR)
+     */
     const authClient = await createAuthClient();
+
     const {
       data: { user },
+      error: authError,
     } = await authClient.auth.getUser();
 
-    if (!user) {
+    if (authError || !user) {
       return NextResponse.redirect(`${siteUrl}/login`, 303);
     }
 
     const userId = user.id;
     const email = user.email ?? "";
 
-    // 🔎 2. Buscar fila premium existente
-    const { data: premiumRow } = await admin
+    /**
+     * 🔎 2. Buscar fila premium existente
+     */
+    const { data: premiumRow, error: premiumError } = await admin
       .from("premium")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
 
+    if (premiumError) {
+      console.error("Premium fetch error:", premiumError);
+      throw new Error("Failed fetching premium row");
+    }
+
     let customerId = premiumRow?.stripe_customer_id ?? null;
 
-    // 👤 3. Crear customer si no existe
+    /**
+     * 👤 3. Crear Stripe customer si no existe
+     */
     if (!customerId) {
       const customer = await stripe.customers.create({
         email,
@@ -61,17 +74,26 @@ export async function POST() {
 
       customerId = customer.id;
 
-      await admin.from("premium").upsert(
-        {
-          user_id: userId,
-          stripe_customer_id: customerId,
-          is_premium: false,
-        },
-        { onConflict: "user_id" }
-      );
+      const { error: upsertError } = await admin
+        .from("premium")
+        .upsert(
+          {
+            user_id: userId,
+            stripe_customer_id: customerId,
+            is_premium: false,
+          },
+          { onConflict: "user_id" }
+        );
+
+      if (upsertError) {
+        console.error("Premium upsert error:", upsertError);
+        throw new Error("Failed saving customer");
+      }
     }
 
-    // 💳 4. Crear sesión Checkout
+    /**
+     * 💳 4. Crear sesión de Checkout
+     */
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -88,32 +110,42 @@ export async function POST() {
           user_id: userId,
         },
       },
-      metadata: {
-        user_id: userId,
-      },
     });
 
     if (!session.url) {
       throw new Error("Stripe session has no URL");
     }
 
-    // 📝 5. Guardar session ID
-    await admin.from("premium").upsert(
-      {
-        user_id: userId,
-        stripe_session_id: session.id,
-      },
-      { onConflict: "user_id" }
-    );
+    /**
+     * 📝 5. Guardar session ID (opcional, útil para debug)
+     */
+    const { error: sessionSaveError } = await admin
+      .from("premium")
+      .upsert(
+        {
+          user_id: userId,
+          stripe_session_id: session.id,
+        },
+        { onConflict: "user_id" }
+      );
 
-    // 🔁 6. Redirigir a Stripe
+    if (sessionSaveError) {
+      console.error("Session save error:", sessionSaveError);
+    }
+
+    /**
+     * 🔁 6. Redirigir a Stripe
+     */
     return NextResponse.redirect(session.url, 303);
 
   } catch (error: any) {
     console.error("CHECKOUT ERROR:", error?.message || error);
 
+    const fallback =
+      process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/premium?error=1`,
+      `${fallback}/premium?error=1`,
       303
     );
   }

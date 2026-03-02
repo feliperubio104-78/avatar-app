@@ -1,13 +1,17 @@
-// app/api/stripe/webhook/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
 
 const admin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-  process.env.SUPABASE_SERVICE_ROLE_KEY as string
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
 );
 
 export async function POST(req: NextRequest) {
@@ -24,62 +28,43 @@ export async function POST(req: NextRequest) {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET as string
+      process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err: any) {
-    console.error("❌ Invalid signature:", err.message);
+    console.error("Invalid signature:", err.message);
     return new NextResponse("Invalid signature", { status: 400 });
   }
 
   try {
     /**
-     * 🔥 CHECKOUT COMPLETED
+     * ============================================
+     * ACTIVACIÓN + RENOVACIÓN
+     * ============================================
      */
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object as Stripe.Checkout.Session;
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "invoice.paid"
+    ) {
+      let subscriptionId: string | null = null;
 
-      if (!session.subscription) {
-        return NextResponse.json({ received: true });
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+
+        if (typeof session.subscription === "string") {
+          subscriptionId = session.subscription;
+        }
       }
 
-      const subscriptionId =
-        typeof session.subscription === "string"
-          ? session.subscription
-          : session.subscription.id;
+      if (event.type === "invoice.paid") {
+        const invoice = event.data.object as Stripe.Invoice;
 
-      const subscription = await stripe.subscriptions.retrieve(
-        subscriptionId
-      );
+        // Stripe v14: subscription está en lines
+        const line = invoice.lines.data[0];
 
-      const sub = subscription as Stripe.Subscription;
-
-      const userId = sub.metadata?.user_id;
-      if (!userId) return NextResponse.json({ received: true });
-
-      const priceId = sub.items.data[0]?.price.id ?? null;
-      const periodEnd = (sub as any).current_period_end ?? null;
-
-      await admin
-        .from("premium")
-        .update({
-          stripe_subscription_id: sub.id,
-          stripe_price_id: priceId,
-          current_period_end: periodEnd
-            ? new Date(periodEnd * 1000).toISOString()
-            : null,
-          is_premium: true,
-        })
-        .eq("user_id", userId);
-    }
-
-    /**
-     * 🔥 RENOVACIONES
-     */
-    if (event.type === "invoice.paid") {
-      const invoice = event.data.object as Stripe.Invoice;
-
-      const subscriptionId =
-        invoice.lines.data[0]?.subscription as string | undefined;
+        if (line && typeof line.subscription === "string") {
+          subscriptionId = line.subscription;
+        }
+      }
 
       if (!subscriptionId) {
         return NextResponse.json({ received: true });
@@ -89,35 +74,72 @@ export async function POST(req: NextRequest) {
         subscriptionId
       );
 
-      const sub = subscription as Stripe.Subscription;
+      const customerId = subscription.customer as string;
 
-      const userId = sub.metadata?.user_id;
-      if (!userId) return NextResponse.json({ received: true });
+      const { data: premiumRow } = await admin
+        .from("premium")
+        .select("user_id")
+        .eq("stripe_customer_id", customerId)
+        .maybeSingle();
 
-      const priceId = sub.items.data[0]?.price.id ?? null;
-      const periodEnd = (sub as any).current_period_end ?? null;
+      if (!premiumRow) {
+        console.error("No premium row found for:", customerId);
+        return NextResponse.json({ received: true });
+      }
+
+      const userId = premiumRow.user_id;
+
+      const priceId =
+        subscription.items.data[0]?.price.id ?? null;
+
+      // Stripe v14: current_period_end está en el item
+      const periodEnd =
+        subscription.items.data[0]?.current_period_end ?? null;
+
+      const isoPeriodEnd = periodEnd
+        ? new Date(periodEnd * 1000).toISOString()
+        : null;
 
       await admin
         .from("premium")
         .update({
-          stripe_subscription_id: sub.id,
+          stripe_subscription_id: subscription.id,
           stripe_price_id: priceId,
-          current_period_end: periodEnd
-            ? new Date(periodEnd * 1000).toISOString()
-            : null,
+          current_period_end: isoPeriodEnd,
           is_premium: true,
         })
         .eq("user_id", userId);
+
+      await admin
+        .from("profiles")
+        .update({
+          is_premium: true,
+        })
+        .eq("id", userId);
+
+      console.log("Premium activated:", userId);
     }
 
     /**
-     * 🔥 CANCELACIÓN
+     * ============================================
+     * CANCELACIÓN
+     * ============================================
      */
     if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object as Stripe.Subscription;
+      const customerId = subscription.customer as string;
 
-      const userId = subscription.metadata?.user_id;
-      if (!userId) return NextResponse.json({ received: true });
+      const { data: premiumRow } = await admin
+        .from("premium")
+        .select("user_id")
+        .eq("stripe_customer_id", customerId)
+        .maybeSingle();
+
+      if (!premiumRow) {
+        return NextResponse.json({ received: true });
+      }
+
+      const userId = premiumRow.user_id;
 
       await admin
         .from("premium")
@@ -128,11 +150,20 @@ export async function POST(req: NextRequest) {
           current_period_end: null,
         })
         .eq("user_id", userId);
+
+      await admin
+        .from("profiles")
+        .update({
+          is_premium: false,
+        })
+        .eq("id", userId);
+
+      console.log("Premium cancelled:", userId);
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("🔥 Webhook error:", error);
+    console.error("Webhook error:", error);
     return new NextResponse("Webhook failed", { status: 500 });
   }
 }

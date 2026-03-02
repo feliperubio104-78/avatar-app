@@ -1,50 +1,29 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createAuthClient } from "@/lib/supabase/auth-server";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+export const dynamic = "force-dynamic";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  }
-);
+export default async function DashboardPage() {
+  const supabase = await createAuthClient();
 
-export default function DashboardPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState<string | null>(null);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-
-      if (!data.session) {
-        router.push("/login");
-        return;
-      }
-
-      setEmail(data.session.user.email ?? null);
-      setLoading(false);
-    };
-
-    checkSession();
-  }, [router]);
-
-  if (loading) {
-    return <p>Cargando...</p>;
+  if (!user) {
+    redirect("/login");
   }
 
   return (
     <main style={{ padding: 40 }}>
       <h1>Dashboard</h1>
-      <p>Hola {email}</p>
+      <p>Hola {user.email}</p>
+
+      <form action="/api/logout" method="POST">
+        <button style={{ marginTop: 20 }}>
+          Cerrar sesión
+        </button>
+      </form>
     </main>
   );
 }

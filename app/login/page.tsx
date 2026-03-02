@@ -1,28 +1,47 @@
 "use client";
 
-import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  }
-);
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/browser";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
+  const router = useRouter();
+
+  // 🔥 Crear cliente UNA sola vez
+  const supabase = createClient();
+
+  useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+
+      if (data.session) {
+        router.replace("/dashboard");
+      }
+    };
+
+    run();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router, supabase]);
 
   const handleLogin = async () => {
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+    const next = "/arquitectura";
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        emailRedirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent(
+          next
+        )}`,
       },
     });
 
@@ -47,9 +66,7 @@ export default function LoginPage() {
         style={{ padding: 8, marginRight: 10 }}
       />
 
-      <button onClick={handleLogin}>
-        Enviar Magic Link
-      </button>
+      <button onClick={handleLogin}>Enviar Magic Link</button>
     </main>
   );
 }
