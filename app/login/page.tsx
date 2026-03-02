@@ -1,35 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function LoginPage() {
-  const supabase = createClient();
   const [email, setEmail] = useState("");
 
   const handleLogin = async () => {
-    if (!email) {
-      alert("Introduce un email");
-      return;
-    }
-
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo:
-          "https://autoridad-strategic.vercel.app/dashboard",
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
       },
     });
 
     if (error) {
-      alert("Error enviando email: " + error.message);
-    } else {
-      alert("Revisa tu email para iniciar sesión 🚀");
+      console.error(error);
+      alert(error.message);
+      return;
     }
+
+    alert("Revisa tu email para iniciar sesión 🚀");
   };
 
   return (
-    <div style={{ padding: 40 }}>
+    <main style={{ padding: 40 }}>
       <h1>Login</h1>
 
       <input
@@ -43,6 +43,6 @@ export default function LoginPage() {
       <button onClick={handleLogin}>
         Enviar Magic Link
       </button>
-    </div>
+    </main>
   );
 }
