@@ -30,11 +30,14 @@ export default async function DashboardPage({
     }
   );
 
+  // 🔥 CAMBIO CLAVE: usar getSession() en vez de getUser()
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (!user) redirect("/login");
+  if (!session) redirect("/login");
+
+  const user = session.user;
 
   const premium = await getPremiumStatus(user.id);
 
