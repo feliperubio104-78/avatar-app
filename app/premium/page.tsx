@@ -22,9 +22,36 @@ export default async function PremiumPage() {
   // 🔎 Comprobamos estado premium real en DB
   const premium = await getPremiumStatus(user.id);
 
-  // 🔁 Si ya es premium → dashboard
+  // ✅ IMPORTANTE:
+  // Si ya es premium, NO redirigimos automáticamente.
+  // Mostramos un mensaje en vez de hacer redirect agresivo.
   if (premium?.isPremium) {
-    redirect("/dashboard");
+    return (
+      <main style={{ maxWidth: 800, margin: "0 auto", padding: 40 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 900, marginBottom: 20 }}>
+          Ya tienes Premium activo ✅
+        </h1>
+
+        <p style={{ fontSize: 18, color: "#4b5563", marginBottom: 30 }}>
+          Puedes crear arquitecturas ilimitadas desde tu panel.
+        </p>
+
+        <a
+          href="/arquitectura"
+          style={{
+            display: "inline-block",
+            padding: "14px 28px",
+            borderRadius: 12,
+            background: "black",
+            color: "white",
+            fontWeight: 700,
+            textDecoration: "none",
+          }}
+        >
+          Ir a Arquitecturas
+        </a>
+      </main>
+    );
   }
 
   // 💰 Precio dinámico seguro
@@ -40,7 +67,6 @@ export default async function PremiumPage() {
 
   return (
     <main style={{ maxWidth: 1000, margin: "0 auto", padding: 40 }}>
-      
       {/* ===== HERO ===== */}
       <section style={{ textAlign: "center", marginBottom: 60 }}>
         <h1 style={{ fontSize: 40, fontWeight: 900, marginBottom: 20 }}>
@@ -149,7 +175,6 @@ export default async function PremiumPage() {
               fontSize: 18,
               fontWeight: 800,
               cursor: "pointer",
-              transition: "0.2s ease",
             }}
           >
             Activar Arquitectura Profesional
